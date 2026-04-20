@@ -18,6 +18,30 @@ class ItemsScreen extends StatefulWidget {
 class _ItemsScreenState extends State<ItemsScreen> {
   _Filter _filter = _Filter.all;
 
+  Widget _swipeable({
+    required Key key,
+    required VoidCallback? onDelete,
+    required Widget child,
+  }) {
+    if (onDelete == null) return child;
+    return Dismissible(
+      key: key,
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDelete(),
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 22),
+        child: const Icon(Icons.delete_rounded, color: Colors.white, size: 22),
+      ),
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -81,13 +105,21 @@ class _ItemsScreenState extends State<ItemsScreen> {
                             icon: Icons.calendar_month_rounded,
                             label: '日程',
                             color: cs.primary),
-                      ...events.map((e) => EventCard(
-                            event: e,
+                      ...events.map((e) => _swipeable(
+                            key: ValueKey('event_${e.id}'),
                             onDelete: e.id != null
                                 ? () => context
                                     .read<AppProvider>()
                                     .deleteEvent(e.id!)
                                 : null,
+                            child: EventCard(
+                              event: e,
+                              onDelete: e.id != null
+                                  ? () => context
+                                      .read<AppProvider>()
+                                      .deleteEvent(e.id!)
+                                  : null,
+                            ),
                           )),
                     ],
                     if (todos.isNotEmpty) ...[
@@ -98,18 +130,26 @@ class _ItemsScreenState extends State<ItemsScreen> {
                             icon: Icons.checklist_rounded,
                             label: '待办',
                             color: Color(0xFFF97316)),
-                      ...todos.map((t) => TodoCard(
-                            todo: t,
-                            onToggle: t.id != null
-                                ? (done) => context
-                                    .read<AppProvider>()
-                                    .toggleTodo(t.id!, done)
-                                : null,
+                      ...todos.map((t) => _swipeable(
+                            key: ValueKey('todo_${t.id}'),
                             onDelete: t.id != null
                                 ? () => context
                                     .read<AppProvider>()
                                     .deleteTodo(t.id!)
                                 : null,
+                            child: TodoCard(
+                              todo: t,
+                              onToggle: t.id != null
+                                  ? (done) => context
+                                      .read<AppProvider>()
+                                      .toggleTodo(t.id!, done)
+                                  : null,
+                              onDelete: t.id != null
+                                  ? () => context
+                                      .read<AppProvider>()
+                                      .deleteTodo(t.id!)
+                                  : null,
+                            ),
                           )),
                     ],
                     const SizedBox(height: 16),

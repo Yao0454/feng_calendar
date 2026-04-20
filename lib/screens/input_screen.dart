@@ -161,13 +161,17 @@ class _InputScreenState extends State<InputScreen>
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildTextTab(cs),
-          _buildImageTab(cs),
-          _buildFileTab(cs),
-        ],
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildTextTab(cs),
+            _buildImageTab(cs),
+            _buildFileTab(cs),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: isLoading ? null : _extract,

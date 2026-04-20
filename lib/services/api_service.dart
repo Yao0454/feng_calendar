@@ -6,14 +6,14 @@ import '../models/models.dart';
 
 class ApiService {
   static const _baseUrlKey = 'server_base_url';
-  static const _defaultBaseUrl = 'http://192.168.1.100:8000';
+  static const _defaultBaseUrl = 'http://101.37.80.57:5522';
 
   late final Dio _dio;
 
   ApiService() {
     _dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 60),
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 180),
       headers: {'Content-Type': 'application/json'},
     ));
     _dio.interceptors.add(LogInterceptor(
