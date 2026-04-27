@@ -86,7 +86,7 @@ jobs:
           cache: true
 
       - run: flutter pub get
-      - run: flutter build macos --release --no-codesign
+      - run: flutter build macos --release -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 
       - name: Create DMG
         run: |
