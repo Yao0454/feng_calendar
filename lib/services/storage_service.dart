@@ -152,6 +152,20 @@ class StorageService {
     await db.delete('todos');
   }
 
+  /// Replace the entire local cache with server data (used for cloud sync).
+  Future<void> replaceAll(List<ScheduleEvent> newEvents, List<Todo> newTodos) async {
+    final batch = db.batch();
+    batch.delete('events');
+    batch.delete('todos');
+    for (final e in newEvents) {
+      batch.insert('events', e.toDbMap());
+    }
+    for (final t in newTodos) {
+      batch.insert('todos', t.toDbMap());
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<void> clearAll() async {
     await clearEvents();
     await clearTodos();

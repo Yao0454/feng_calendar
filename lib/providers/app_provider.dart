@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
@@ -14,17 +15,33 @@ class AppProvider extends ChangeNotifier {
   List<Todo> todos = [];
   ExtractionStatus status = ExtractionStatus.idle;
   String? errorMessage;
-
-  // File path to import from iOS share / open-in
   String? pendingFilePath;
 
   AppProvider({required this.api, required this.storage});
+
+  // ── Load & sync ────────────────────────────────────────────────────────────
 
   Future<void> loadLocal() async {
     events = await storage.getEvents();
     todos = await storage.getTodos();
     notifyListeners();
+    // Sync from server in the background; update UI when done
+    unawaited(_syncFromServer());
   }
+
+  Future<void> _syncFromServer() async {
+    try {
+      final result = await api.getItems();
+      await storage.replaceAll(result.events, result.todos);
+      events = result.events;
+      todos = result.todos;
+      notifyListeners();
+    } catch (_) {
+      // Keep local cache on network error
+    }
+  }
+
+  // ── Extraction ─────────────────────────────────────────────────────────────
 
   Future<bool> extractFromText(String text) =>
       _extract(() => api.extractFromText(text));
@@ -39,12 +56,10 @@ class AppProvider extends ChangeNotifier {
     status = ExtractionStatus.loading;
     errorMessage = null;
     notifyListeners();
-
     try {
-      final result = await fn();
-      await storage.insertEvents(result.events);
-      await storage.insertTodos(result.todos);
-      await loadLocal();
+      await fn();
+      // Server already saved the new items; sync full list to stay consistent
+      await _syncFromServer();
       status = ExtractionStatus.success;
       notifyListeners();
       return true;
@@ -56,95 +71,58 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  // ── Event mutations (server-first) ─────────────────────────────────────────
+
   Future<void> updateEvent(ScheduleEvent event) async {
-    await storage.updateEvent(event);
-    final idx = events.indexWhere((e) => e.id == event.id);
-    if (idx != -1) {
-      final updated = List<ScheduleEvent>.from(events);
-      updated[idx] = event;
-      // Re-sort: pinned first, then by date/time
-      updated.sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        final dateCompare = (a.date ?? '').compareTo(b.date ?? '');
-        if (dateCompare != 0) return dateCompare;
-        return (a.time ?? '').compareTo(b.time ?? '');
-      });
-      events = updated;
-      notifyListeners();
-    }
-  }
-
-  Future<void> updateTodo(Todo todo) async {
-    await storage.updateTodo(todo);
-    final idx = todos.indexWhere((t) => t.id == todo.id);
-    if (idx != -1) {
-      final updated = List<Todo>.from(todos);
-      updated[idx] = todo;
-      updated.sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        return (a.deadline ?? '').compareTo(b.deadline ?? '');
-      });
-      todos = updated;
-      notifyListeners();
-    }
-  }
-
-  Future<void> toggleEventPin(int id, bool isPinned) async {
-    await storage.updateEventPinned(id, isPinned);
-    final idx = events.indexWhere((e) => e.id == id);
-    if (idx != -1) {
-      final updated = List<ScheduleEvent>.from(events);
-      updated[idx] = events[idx].copyWith(isPinned: isPinned);
-      updated.sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        final dateCompare = (a.date ?? '').compareTo(b.date ?? '');
-        if (dateCompare != 0) return dateCompare;
-        return (a.time ?? '').compareTo(b.time ?? '');
-      });
-      events = updated;
-      notifyListeners();
-    }
-  }
-
-  Future<void> toggleTodoPin(int id, bool isPinned) async {
-    await storage.updateTodoPinned(id, isPinned);
-    final idx = todos.indexWhere((t) => t.id == id);
-    if (idx != -1) {
-      final updated = List<Todo>.from(todos);
-      updated[idx] = todos[idx].copyWith(isPinned: isPinned);
-      updated.sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        return (a.deadline ?? '').compareTo(b.deadline ?? '');
-      });
-      todos = updated;
-      notifyListeners();
-    }
+    final updated = await api.updateEventApi(event);
+    await storage.updateEvent(updated);
+    _replaceEvent(updated);
   }
 
   Future<void> deleteEvent(int id) async {
+    await api.deleteEventApi(id);
     await storage.deleteEvent(id);
     events = events.where((e) => e.id != id).toList();
     notifyListeners();
   }
 
+  Future<void> toggleEventPin(int id, bool isPinned) async {
+    await api.pinEventApi(id, isPinned);
+    await storage.updateEventPinned(id, isPinned);
+    _replaceEvent(events.firstWhere((e) => e.id == id).copyWith(isPinned: isPinned));
+    _sortEvents();
+  }
+
+  // ── Todo mutations (server-first) ──────────────────────────────────────────
+
+  Future<void> updateTodo(Todo todo) async {
+    final updated = await api.updateTodoApi(todo);
+    await storage.updateTodo(updated);
+    _replaceTodo(updated);
+  }
+
   Future<void> deleteTodo(int id) async {
+    await api.deleteTodoApi(id);
     await storage.deleteTodo(id);
     todos = todos.where((t) => t.id != id).toList();
     notifyListeners();
   }
 
   Future<void> toggleTodo(int id, bool isDone) async {
+    await api.toggleTodoDoneApi(id, isDone);
     await storage.updateTodoDone(id, isDone);
-    final idx = todos.indexWhere((t) => t.id == id);
-    if (idx != -1) {
-      final updated = List<Todo>.from(todos);
-      updated[idx] = todos[idx].copyWith(isDone: isDone);
-      todos = updated;
-      notifyListeners();
-    }
+    _replaceTodo(todos.firstWhere((t) => t.id == id).copyWith(isDone: isDone));
+    _sortTodos();
   }
+
+  Future<void> toggleTodoPin(int id, bool isPinned) async {
+    await api.pinTodoApi(id, isPinned);
+    await storage.updateTodoPinned(id, isPinned);
+    _replaceTodo(todos.firstWhere((t) => t.id == id).copyWith(isPinned: isPinned));
+    _sortTodos();
+  }
+
+  // ── Clear all ──────────────────────────────────────────────────────────────
 
   Future<void> clearAll() async {
     await storage.clearAll();
@@ -153,6 +131,8 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Pending file (iOS share) ───────────────────────────────────────────────
+
   void setPendingFile(String path) {
     pendingFilePath = path;
     notifyListeners();
@@ -160,5 +140,47 @@ class AppProvider extends ChangeNotifier {
 
   void clearPendingFile() {
     pendingFilePath = null;
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  void _replaceEvent(ScheduleEvent updated) {
+    final idx = events.indexWhere((e) => e.id == updated.id);
+    if (idx != -1) {
+      final list = List<ScheduleEvent>.from(events);
+      list[idx] = updated;
+      events = list;
+      notifyListeners();
+    }
+  }
+
+  void _replaceTodo(Todo updated) {
+    final idx = todos.indexWhere((t) => t.id == updated.id);
+    if (idx != -1) {
+      final list = List<Todo>.from(todos);
+      list[idx] = updated;
+      todos = list;
+      notifyListeners();
+    }
+  }
+
+  void _sortEvents() {
+    events = List<ScheduleEvent>.from(events)
+      ..sort((a, b) {
+        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+        final dc = (a.date ?? '').compareTo(b.date ?? '');
+        return dc != 0 ? dc : (a.time ?? '').compareTo(b.time ?? '');
+      });
+    notifyListeners();
+  }
+
+  void _sortTodos() {
+    todos = List<Todo>.from(todos)
+      ..sort((a, b) {
+        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        return (a.deadline ?? '').compareTo(b.deadline ?? '');
+      });
+    notifyListeners();
   }
 }

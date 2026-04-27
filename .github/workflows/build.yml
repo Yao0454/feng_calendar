@@ -1,0 +1,146 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # 允许手动触发
+
+env:
+  FLUTTER_VERSION: '3.38.2'
+  APP_NAME: 枫枫子的备忘录
+
+jobs:
+  # ── Android APK ─────────────────────────────────────────────────────────────
+  build-android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build apk --release --split-per-abi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            build/app/outputs/flutter-apk/app-release-arm64-v8a.apk
+            build/app/outputs/flutter-apk/app-release-armeabi-v7a.apk
+
+  # ── Windows EXE ─────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      - name: Zip release folder
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "build/windows/x64/runner/Release/*" `
+            -DestinationPath "build/${{ env.APP_NAME }}-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: build/${{ env.APP_NAME }}-windows.zip
+
+  # ── macOS DMG ────────────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS DMG
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Xcode 26 在构建环境里同时设置所有平台的 deployment target，
+      # clang 26 遇到多个 *_DEPLOYMENT_TARGET 变量时报错。
+      # 在 macos_assemble.sh 里提前 unset 掉非 macOS 的变量。
+      - name: Patch Flutter for Xcode 26 compatibility
+        run: |
+          ASSEMBLE="$(flutter --version --machine 2>/dev/null \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["flutterRoot"])')\
+/packages/flutter_tools/bin/macos_assemble.sh"
+          if ! grep -q "XROS_DEPLOYMENT_TARGET" "$ASSEMBLE"; then
+            sed -i '' '/# Main entry point\./i\
+# Strip non-macOS deployment targets (Xcode 26 fix)\
+unset IPHONEOS_DEPLOYMENT_TARGET\
+unset XROS_DEPLOYMENT_TARGET\
+unset TVOS_DEPLOYMENT_TARGET\
+unset WATCHOS_DEPLOYMENT_TARGET\
+unset DRIVERKIT_DEPLOYMENT_TARGET\
+' "$ASSEMBLE"
+          fi
+
+      - run: flutter build macos --release --no-codesign
+
+      - name: Create DMG
+        run: |
+          hdiutil create \
+            -volname "${{ env.APP_NAME }}" \
+            -srcfolder "build/macos/Build/Products/Release/${{ env.APP_NAME }}.app" \
+            -ov -format UDZO \
+            "build/${{ env.APP_NAME }}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/${{ env.APP_NAME }}.dmg
+
+  # ── 打包 Release（仅推 tag 时触发）────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-android, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/android-apk/*.apk
+            artifacts/windows-zip/*.zip
+            artifacts/macos-dmg/*.dmg
+          generate_release_notes: true

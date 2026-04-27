@@ -19,10 +19,7 @@ class ApiService {
       receiveTimeout: const Duration(seconds: 180),
       headers: {'Content-Type': 'application/json'},
     ));
-    _dio.interceptors.add(LogInterceptor(
-      requestBody: false,
-      responseBody: false,
-    ));
+    _dio.interceptors.add(LogInterceptor(requestBody: false, responseBody: false));
   }
 
   Options get _authOptions {
@@ -38,14 +35,12 @@ class ApiService {
 
   Future<void> setBaseUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _baseUrlKey, url.trimRight().replaceAll(RegExp(r'/$'), ''));
+    await prefs.setString(_baseUrlKey, url.trimRight().replaceAll(RegExp(r'/$'), ''));
   }
 
-  /// ISO date string of today, e.g. "2026-04-26", passed to backend so the
-  /// model can resolve relative expressions like "后天", "下周三".
-  String get _todayDate =>
-      DateTime.now().toIso8601String().substring(0, 10);
+  String get _todayDate => DateTime.now().toIso8601String().substring(0, 10);
+
+  // ── Health ─────────────────────────────────────────────────────────────────
 
   Future<bool> healthCheck() async {
     try {
@@ -57,13 +52,13 @@ class ApiService {
     }
   }
 
+  // ── Extraction ─────────────────────────────────────────────────────────────
+
   Future<ExtractionResult> extractFromText(String text) async {
     final base = await _getBaseUrl();
-    final res = await _dio.post(
-      '$base/extract',
-      data: jsonEncode({'text': text, 'current_date': _todayDate}),
-      options: _authOptions,
-    );
+    final res = await _dio.post('$base/extract',
+        data: jsonEncode({'text': text, 'current_date': _todayDate}),
+        options: _authOptions);
     return _parseResult(res.data);
   }
 
@@ -73,16 +68,9 @@ class ApiService {
     final b64 = base64Encode(bytes);
     final ext = imageFile.path.split('.').last.toLowerCase();
     final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
-
-    final res = await _dio.post(
-      '$base/extract',
-      data: jsonEncode({
-        'image_base64': b64,
-        'image_mime': mime,
-        'current_date': _todayDate,
-      }),
-      options: _authOptions,
-    );
+    final res = await _dio.post('$base/extract',
+        data: jsonEncode({'image_base64': b64, 'image_mime': mime, 'current_date': _todayDate}),
+        options: _authOptions);
     return _parseResult(res.data);
   }
 
@@ -90,31 +78,109 @@ class ApiService {
     final base = await _getBaseUrl();
     final bytes = await file.readAsBytes();
     final b64 = base64Encode(bytes);
-
-    final res = await _dio.post(
-      '$base/extract',
-      data: jsonEncode({
-        'file_base64': b64,
-        'file_type': fileType,
-        'current_date': _todayDate,
-      }),
-      options: _authOptions,
-    );
+    final res = await _dio.post('$base/extract',
+        data: jsonEncode({'file_base64': b64, 'file_type': fileType, 'current_date': _todayDate}),
+        options: _authOptions);
     return _parseResult(res.data);
   }
 
   ExtractionResult _parseResult(dynamic data) {
-    // Dio auto-decodes JSON when response Content-Type is application/json.
-    // If the server omits the header, data arrives as a raw String — decode it.
-    Map<String, dynamic> map;
-    if (data is String) {
-      map = jsonDecode(data) as Map<String, dynamic>;
-    } else {
-      map = data as Map<String, dynamic>;
-    }
-    debugPrint('[API] response keys: ${map.keys.toList()}');
-    debugPrint('[API] events count: ${(map["events"] as List?)?.length ?? 0},'
-        ' todos count: ${(map["todos"] as List?)?.length ?? 0}');
+    final map = data is String
+        ? jsonDecode(data) as Map<String, dynamic>
+        : data as Map<String, dynamic>;
+    debugPrint('[API] events: ${(map["events"] as List?)?.length ?? 0},'
+        ' todos: ${(map["todos"] as List?)?.length ?? 0}');
     return ExtractionResult.fromJson(map);
   }
+
+  // ── Cloud sync: read all items ─────────────────────────────────────────────
+
+  Future<ExtractionResult> getItems() async {
+    final base = await _getBaseUrl();
+    final res = await _dio.get('$base/items', options: _authOptions);
+    return _parseResult(res.data);
+  }
+
+  // ── Events CRUD ────────────────────────────────────────────────────────────
+
+  Future<ScheduleEvent> createEvent(ScheduleEvent event) async {
+    final base = await _getBaseUrl();
+    final res = await _dio.post('$base/items/events',
+        data: jsonEncode(_eventBody(event)), options: _authOptions);
+    return ScheduleEvent.fromJson(_asMap(res.data));
+  }
+
+  Future<ScheduleEvent> updateEventApi(ScheduleEvent event) async {
+    final base = await _getBaseUrl();
+    final res = await _dio.put('$base/items/events/${event.id}',
+        data: jsonEncode(_eventBody(event)), options: _authOptions);
+    return ScheduleEvent.fromJson(_asMap(res.data));
+  }
+
+  Future<void> deleteEventApi(int id) async {
+    final base = await _getBaseUrl();
+    await _dio.delete('$base/items/events/$id', options: _authOptions);
+  }
+
+  Future<void> pinEventApi(int id, bool isPinned) async {
+    final base = await _getBaseUrl();
+    await _dio.patch('$base/items/events/$id/pin',
+        data: jsonEncode({'is_pinned': isPinned}), options: _authOptions);
+  }
+
+  // ── Todos CRUD ─────────────────────────────────────────────────────────────
+
+  Future<Todo> createTodo(Todo todo) async {
+    final base = await _getBaseUrl();
+    final res = await _dio.post('$base/items/todos',
+        data: jsonEncode(_todoBody(todo)), options: _authOptions);
+    return Todo.fromJson(_asMap(res.data));
+  }
+
+  Future<Todo> updateTodoApi(Todo todo) async {
+    final base = await _getBaseUrl();
+    final res = await _dio.put('$base/items/todos/${todo.id}',
+        data: jsonEncode(_todoBody(todo)), options: _authOptions);
+    return Todo.fromJson(_asMap(res.data));
+  }
+
+  Future<void> deleteTodoApi(int id) async {
+    final base = await _getBaseUrl();
+    await _dio.delete('$base/items/todos/$id', options: _authOptions);
+  }
+
+  Future<void> toggleTodoDoneApi(int id, bool isDone) async {
+    final base = await _getBaseUrl();
+    await _dio.patch('$base/items/todos/$id/done',
+        data: jsonEncode({'is_done': isDone}), options: _authOptions);
+  }
+
+  Future<void> pinTodoApi(int id, bool isPinned) async {
+    final base = await _getBaseUrl();
+    await _dio.patch('$base/items/todos/$id/pin',
+        data: jsonEncode({'is_pinned': isPinned}), options: _authOptions);
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Map<String, dynamic> _eventBody(ScheduleEvent e) => {
+        'title': e.title,
+        'date': e.date,
+        'time': e.time,
+        'location': e.location,
+        'notes': e.notes,
+        'is_pinned': e.isPinned,
+      };
+
+  Map<String, dynamic> _todoBody(Todo t) => {
+        'title': t.title,
+        'deadline': t.deadline,
+        'priority': t.priority.name,
+        'notes': t.notes,
+        'is_done': t.isDone,
+        'is_pinned': t.isPinned,
+      };
+
+  Map<String, dynamic> _asMap(dynamic d) =>
+      d is String ? jsonDecode(d) as Map<String, dynamic> : d as Map<String, dynamic>;
 }

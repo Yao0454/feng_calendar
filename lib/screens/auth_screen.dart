@@ -17,6 +17,7 @@ class _AuthScreenState extends State<AuthScreen>
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   bool _obscure = true;
+  bool _remember = true;
   bool _loading = false;
   String? _error;
 
@@ -25,6 +26,7 @@ class _AuthScreenState extends State<AuthScreen>
     super.initState();
     _tab = TabController(length: 2, vsync: this);
     _tab.addListener(() => setState(() => _error = null));
+    _loadSavedUsername();
   }
 
   @override
@@ -34,6 +36,13 @@ class _AuthScreenState extends State<AuthScreen>
     _passCtrl.dispose();
     _confirmCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSavedUsername() async {
+    final saved = await context.read<AuthService>().getSavedUsername();
+    if (saved != null && mounted) {
+      setState(() => _userCtrl.text = saved);
+    }
   }
 
   Future<String> _getBaseUrl() async {
@@ -67,8 +76,8 @@ class _AuthScreenState extends State<AuthScreen>
     final baseUrl = await _getBaseUrl();
 
     final err = _tab.index == 0
-        ? await auth.login(baseUrl, username, password)
-        : await auth.register(baseUrl, username, password);
+        ? await auth.login(baseUrl, username, password, remember: _remember)
+        : await auth.register(baseUrl, username, password, remember: _remember);
 
     if (!mounted) return;
     setState(() {
@@ -176,6 +185,43 @@ class _AuthScreenState extends State<AuthScreen>
                     ),
                   ),
                 ),
+                // 记住密码 — 仅登录 tab 显示
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  child: _tab.index == 0
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: Checkbox(
+                                  value: _remember,
+                                  onChanged: (v) =>
+                                      setState(() => _remember = v ?? true),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4)),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () =>
+                                    setState(() => _remember = !_remember),
+                                child: Text(
+                                  '记住登录状态',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
                   child: _tab.index == 1
