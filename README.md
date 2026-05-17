@@ -1,91 +1,108 @@
 # 枫枫子的备忘录
 
-从文字、截图、文件中自动提取日程和待办事项的跨平台 App，支持 AI 对话规划、用户画像、个性化推荐和 arXiv 学术日报。
+从文字、截图、文件中自动提取日程和待办事项的跨平台 App，支持云同步、AI 对话规划、用户画像、个性化推荐（arXiv / GitHub / CSDN / StackOverflow）和学术日报。
 
 ## 功能
 
-### 核心功能
-- **文字提取**：粘贴任意中英文文字，AI 自动识别日程与待办
-- **图片提取**：选择截图或照片，OCR + AI 解析
-- **文件提取**：上传 PDF / TXT / MD，批量提取
-- **本地持久化**：SQLite 存储所有历史记录
+### 核心
 
-### 新增功能
-- **AI 聊天规划**：可拖拽悬浮按钮，对话式规划日程，支持草稿预览和一键导入
-- **用户画像**：管理兴趣标签（研究领域/项目类型/技术技能），支持 CRUD
-- **个性化推荐**：基于用户画像的推荐内容流，支持已读/收藏标记
-- **arXiv 日报**：自动生成学术日报，支持偏好设置（领域、数量、推送时间）
+- **智能提取**：文字 / 截图 / PDF / TXT 一键提取日程和待办，AI 回复自然语言确认
+- **云同步**：账号登录后数据实时同步，多设备共享同一份日历
+- **编辑 & 管理**：点击卡片编辑，右滑置顶，左滑删除；置顶条目显示红色边框
+- **iOS 文件导入**：从其他 App 「打开方式」直接导入文件一键提取
 
-### 体验优化
-- **自适应布局**：宽屏侧边栏 / 窄屏底部导航栏
-- **深色模式**：跟随系统自动切换
-- **错误重试**：网络失败时 SnackBar 提供重试按钮
-- **AI 思考提示**：聊天时显示进度条和取消按钮
+### AI 对话
+
+- **聊天规划**：对话式规划日程，支持草稿预览和一键导入；发送内容和回复均支持 Markdown 渲染
+- **对话气泡**：两个聊天页均采用消息气泡样式（`reverse: true`），最新消息始终在底部
+
+### 推荐 & 日报
+
+- **个性化推荐**：基于用户画像聚合 arXiv / GitHub / HuggingFace / CSDN / StackOverflow 内容
+- **论文阅读**：点击 arXiv 卡片「阅读论文」直接在 App 内渲染 PDF，无需跳转浏览器
+- **arXiv 日报**：按领域偏好自动生成学术摘要日报
+
+### 体验
+
+- **浮动气泡导航栏**：毛玻璃效果，圆角悬浮，支持 `extendBody`
+- **可拖拽 AI 按钮**：可吸附边缘隐藏，不遮挡操作区域
+- **深色模式**：跟随系统，Material 3 动态配色
+- **多端支持**：iOS / macOS / Android / Windows，GitHub Actions 自动构建
 
 ## 技术栈
 
 | 层 | 技术 |
 | --- | --- |
-| 前端 | Flutter 3.x，Material 3，Provider |
+| 前端 | Flutter 3.38，Material 3，Provider |
 | 本地存储 | sqflite，shared_preferences |
-| HTTP | dio（连接超时 30s，响应超时 180s）|
-| 后端 | FastAPI + Ollama（本地服务器）|
-| AI 模型 | qwen2.5:72b（可在设置页更换）|
+| HTTP | dio（30s 连接超时，180s 响应超时）|
+| Markdown | flutter_markdown_plus |
+| PDF 阅读 | pdfx |
+| 后端 | FastAPI + Ollama（自建服务器）|
+| AI 模型 | qwen3-vl:30b |
+| 认证 | Session-based（bcrypt，30 天有效期）|
+| 云存储 | 服务端 SQLite（按用户隔离）|
 
 ## 目录结构
 
 ```text
 lib/
-├── main.dart                  # 入口，Provider 注入，主题配置
-├── models/models.dart         # ScheduleEvent, Todo, ChatMessage, Interest, RecommendationItem, ArxivReport...
-├── providers/app_provider.dart # 全局状态（ChangeNotifier）
+├── main.dart
+├── models/models.dart
+├── providers/app_provider.dart
 ├── services/
-│   ├── api_service.dart       # HTTP 请求封装（含统一错误处理）
-│   ├── auth_service.dart      # 认证服务
-│   └── storage_service.dart   # SQLite CRUD
+│   ├── api_service.dart          # HTTP 请求 + 统一错误处理
+│   ├── auth_service.dart         # 登录/注册/Session 持久化
+│   └── storage_service.dart      # SQLite 本地缓存
 ├── screens/
-│   ├── home_screen.dart       # 自适应 Scaffold + 悬浮按钮
-│   ├── input_screen.dart      # 文字/图片/文件输入
-│   ├── items_screen.dart      # 日程+待办列表
-│   ├── chat_planning_screen.dart  # AI 聊天规划界面
-│   ├── profile_screen.dart    # 用户画像管理
-│   ├── recommendations_screen.dart # 推荐内容列表
-│   ├── daily_report_screen.dart   # arXiv 日报
-│   └── settings_screen.dart   # 服务器配置
+│   ├── home_screen.dart          # 自适应布局 + 浮动导航栏
+│   ├── auth_screen.dart          # 登录/注册页
+│   ├── input_screen.dart         # 提取页（含 AI 聊天模式）
+│   ├── items_screen.dart         # 日程 & 待办列表
+│   ├── chat_planning_screen.dart # AI 规划聊天
+│   ├── recommendations_screen.dart
+│   ├── daily_report_screen.dart
+│   ├── paper_reader_screen.dart  # arXiv PDF 阅读器
+│   └── settings_screen.dart
 └── widgets/
     ├── floating_chat_button.dart  # 可拖拽悬浮按钮
-    ├── event_card.dart        # 日程卡片
-    ├── todo_card.dart         # 待办卡片
-    └── empty_state.dart       # 空状态占位
+    ├── event_card.dart
+    ├── todo_card.dart
+    └── edit_sheet.dart            # 编辑底部面板
 ```
 
 ## 后端 API
 
-### POST `/extract`
+### 认证
 
-```json
-// 请求（三选一）
-{
-  "text": "明天下午 3 点在 11-100 开组会",
-  "image_base64": "<base64>",
-  "file_base64": "<base64>",
-  "file_type": "pdf"
-}
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/auth/register` | 注册，body: `{username, password}` |
+| POST | `/auth/login` | 登录，返回 `session_id` |
+| GET | `/auth/me` | 当前用户信息 |
+| POST | `/auth/logout` | 退出登录 |
 
-// 响应
-{
-  "events": [
-    { "title": "...", "date": "2026-04-26", "time": "15:00", "location": "...", "notes": "..." }
-  ],
-  "todos": [
-    { "title": "...", "deadline": "2026-05-10", "priority": "high", "notes": "..." }
-  ]
-}
+### 日程提取
+
+```http
+POST /extract
+Authorization: Bearer <session_id>
 ```
 
-### GET `/health`
+请求字段（三选一）：`text` / `image_base64` / `file_base64`，可附加 `current_date`（用于解析"明天"、"下周三"等相对日期）。
 
-返回 `{"status": "ok"}`，用于设置页连接检测。
+响应额外返回 `message` 字段，包含 AI 生成的自然语言确认。
+
+### 日程 & 待办 CRUD
+
+```http
+GET/POST        /items
+POST/PUT/DELETE /items/events/{id}
+PATCH           /items/events/{id}/pin
+POST/PUT/DELETE /items/todos/{id}
+PATCH           /items/todos/{id}/done
+PATCH           /items/todos/{id}/pin
+```
 
 ### AI 聊天规划
 
@@ -94,188 +111,68 @@ lib/
 | POST | `/chat/start` | 开始规划会话 |
 | POST | `/chat/message` | 发送消息 |
 | POST | `/chat/draft` | 生成规划草稿 |
-| POST | `/chat/confirm/{draft_id}` | 确认/取消草稿 |
-| GET | `/chat/history/{session_id}` | 获取聊天历史 |
+| POST | `/chat/confirm/{id}` | 确认 / 取消草稿 |
+| GET | `/chat/history/{session_id}` | 获取历史消息 |
 
-### 用户画像
+### 推荐、日报 & 论文
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/profile/interests` | 获取兴趣标签列表 |
-| POST | `/profile/interests` | 添加兴趣标签 |
-| PUT | `/profile/interests/{id}` | 更新兴趣标签 |
-| DELETE | `/profile/interests/{id}` | 删除兴趣标签 |
-| GET | `/profile/summary` | 获取画像摘要 |
-
-### 推荐系统
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/recommendations/feed` | 获取推荐内容流 |
-| POST | `/recommendations/{id}/read` | 标记已读 |
-| POST | `/recommendations/{id}/save` | 收藏内容 |
-| GET | `/recommendations/stats/summary` | 获取推荐统计 |
-
-### arXiv 日报
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/arxiv/preference` | 获取日报偏好 |
-| POST | `/arxiv/preference` | 更新日报偏好 |
-| POST | `/arxiv/report/generate` | 生成日报 |
-| GET | `/arxiv/report/today` | 获取今日日报 |
-| GET | `/arxiv/reports` | 获取历史日报列表 |
+```http
+GET  /recommendations/feed
+POST /recommendations/{id}/read
+POST /recommendations/{id}/save
+GET  /arxiv/preference
+POST /arxiv/preference
+POST /arxiv/report/generate
+GET  /arxiv/report/today
+GET  /arxiv/paper/{arxiv_id}/markdown   # PDF → Markdown（带缓存）
+```
 
 ## 快速开始
-
-### 环境要求
-
-- Flutter 3.x SDK
-- Visual Studio Build Tools（Windows 桌面）或 Xcode（macOS/iOS）
-- 后端服务运行中
-
-### 安装与运行
 
 ```bash
 # 安装依赖
 flutter pub get
 
-# 生成图标（需要 assets/icon.png）
-dart run flutter_launcher_icons
-
-# 运行（开发模式）
-flutter run -d windows
+# 运行
 flutter run -d macos
-flutter run -d <iOS设备UDID>
+flutter run -d <iOS 设备 UDID>
 
-# 打包（发布模式）
-flutter build windows --release
+# 打包
 flutter build macos --release
-flutter build ipa --release          # 需要 Apple Developer 证书
+flutter build ipa --release --export-method development
+flutter build apk --release --split-per-abi
 ```
-
-### 构建产物
-
-- Windows: `build\windows\x64\runner\Release\feng_calendar.exe`
-- macOS: `build\macos\Build\Products\Release\feng_calendar.app`
 
 ## 配置
 
-在 App 设置页修改，或直接编辑 `lib/services/api_service.dart`：
-
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| 服务器地址 | `http://101.37.80.57:5522` | 后端 FastAPI 地址 |
-| 模型名 | `qwen2.5:72b` | Ollama 模型 |
-| 连接超时 | 30 秒 | dio connectTimeout |
-| 响应超时 | 180 秒 | dio receiveTimeout |
+| 服务器地址 | `http://101.37.80.57:5522` | 后端地址，可在设置页修改 |
+| 连接超时 | 30 秒 | |
+| 响应超时 | 180 秒 | AI 推理较慢时不超时 |
 
-## 错误处理
+## CI / CD
 
-所有 API 请求经过统一错误处理，用户友好的错误提示：
+推送到 `main` 自动触发三平台构建（`.github/workflows/build.yml`）：
 
-| 错误类型 | 提示信息 |
-| --- | --- |
-| 连接超时 | 连接超时，请检查网络 |
-| 响应超时 | 响应超时，AI推理可能需要较长时间 |
-| 503 | Ollama服务不可用，请确保服务已启动 |
-| 504 | AI推理超时，请稍后重试 |
-| 401 | 未授权，请重新登录 |
-| 网络错误 | 网络连接失败，请检查网络设置 |
+| 平台 | Runner | 产物 |
+| --- | --- | --- |
+| Android | ubuntu-latest | `app-release-arm64-v8a.apk` |
+| Windows | windows-latest | `枫枫子的备忘录-Setup.exe`（Inno Setup） |
+| macOS | macos-latest | `枫枫子的备忘录.dmg` |
+
+推送 `v*` tag 后自动创建 GitHub Release 并附上三个安装包。
 
 ---
 
-## 待实现 TODO
+## 待实现
 
-### iOS/macOS 主屏幕小组件（WidgetKit）
+### iOS 主屏幕小组件（WidgetKit）
 
-Flutter 侧桥接代码已通过 `home_widget` 包准备好，但 WidgetKit 原生侧尚未实现。
+Flutter 侧 `home_widget` 桥接代码已写好（见 `AppProvider._updateWidget()`），原生侧待完成：
 
-#### Flutter 侧（已写好，提取完成后调用）
-
-```dart
-import 'package:home_widget/home_widget.dart';
-
-// 在 AppProvider._extract() 成功后调用
-await HomeWidget.saveWidgetData('events_json', jsonEncode(todayEvents));
-await HomeWidget.saveWidgetData('todos_json', jsonEncode(pendingTodos));
-await HomeWidget.updateWidget(
-  iOSName: 'ScheduleWidget',
-);
-```
-
-#### 原生侧待办清单
-
-- [ ] **Xcode：添加 Widget Extension Target**
-  - File → New → Target → Widget Extension
-  - Product Name: `ScheduleWidget`
-  - 取消勾选 "Include Configuration App Intent"
-
-- [ ] **配置 App Group**（Flutter ↔ WidgetKit 共享数据）
-  - Runner target → Signing & Capabilities → + App Groups
-  - 添加 `group.com.example.fengCalendar`
-  - ScheduleWidget target 同样添加该 App Group
-  - Flutter 侧调用 `HomeWidget.setAppGroupId('group.com.example.fengCalendar')`
-
-- [ ] **实现 `ScheduleWidget.swift`**（SwiftUI）
-
-  ```swift
-  import WidgetKit
-  import SwiftUI
-
-  struct ScheduleEntry: TimelineEntry {
-      let date: Date
-      let events: [[String: String]]
-      let todos: [[String: String]]
-  }
-
-  struct ScheduleProvider: TimelineProvider {
-      func getSnapshot(in context: Context, completion: @escaping (ScheduleEntry) -> Void) {
-          completion(makeEntry())
-      }
-      func getTimeline(in context: Context, completion: @escaping (Timeline<ScheduleEntry>) -> Void) {
-          let entry = makeEntry()
-          completion(Timeline(entries: [entry], policy: .atEnd))
-      }
-      func placeholder(in context: Context) -> ScheduleEntry { makeEntry() }
-
-      private func makeEntry() -> ScheduleEntry {
-          let defaults = UserDefaults(suiteName: "group.com.example.fengCalendar")
-          let eventsJson = defaults?.string(forKey: "events_json") ?? "[]"
-          let todosJson  = defaults?.string(forKey: "todos_json")  ?? "[]"
-          let events = (try? JSONSerialization.jsonObject(with: Data(eventsJson.utf8))) as? [[String: String]] ?? []
-          let todos  = (try? JSONSerialization.jsonObject(with: Data(todosJson.utf8)))  as? [[String: String]] ?? []
-          return ScheduleEntry(date: .now, events: events, todos: todos)
-      }
-  }
-
-  struct ScheduleWidgetView: View {
-      let entry: ScheduleEntry
-      var body: some View {
-          VStack(alignment: .leading, spacing: 4) {
-              Text("今日日程").font(.caption).foregroundStyle(.secondary)
-              ForEach(entry.events.prefix(3), id: \.self) { e in
-                  Label(e["title"] ?? "", systemImage: "calendar")
-                      .font(.caption2).lineLimit(1)
-              }
-          }
-          .padding()
-      }
-  }
-
-  @main
-  struct ScheduleWidget: Widget {
-      var body: some WidgetConfiguration {
-          StaticConfiguration(kind: "ScheduleWidget", provider: ScheduleProvider()) { entry in
-              ScheduleWidgetView(entry: entry)
-          }
-          .configurationDisplayName("枫枫子的备忘录")
-          .description("今日日程速览")
-          .supportedFamilies([.systemSmall, .systemMedium])
-      }
-  }
-  ```
-
-- [ ] **macOS Widget Extension**（可选，步骤同 iOS，Target 选 macOS）
-
-- [ ] **测试**：在模拟器主屏幕长按 → 添加小组件 → 验证数据更新
+- [ ] Xcode → File → New → Target → Widget Extension（Product Name: `ScheduleWidget`）
+- [ ] Runner + ScheduleWidget 两个 Target 均添加 App Group `group.com.example.fengCalendar`
+- [ ] 替换自动生成的 `ScheduleWidget.swift`（见 `ios/ScheduleWidget/ScheduleWidget.swift`）
+- [ ] Runner Build Settings → Code Signing Entitlements → `Runner/Runner.entitlements`
+- [ ] 主屏幕长按 → 添加小组件 → 验证数据更新
